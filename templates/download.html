@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Download Service</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 { color: #333; }
+        .hint {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        code {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Backup File Download Service</h2>
+        <p>Usage: <code>/download?path=&lt;filepath&gt;</code></p>
+        
+        <div class="hint">
+            <strong>💡 Hint for debugging:</strong>
+            <p>If you need to debug the SSH connection issues, the <code>owasp10</code> private key 
+            is stored in the backup directory for administrative access.</p>
+            <p>Contact system administrator for the exact key location.</p>
+        </div>
+        
+        <p style="color: #666; font-size: 0.9em;">
+            Example backup files might be located in subdirectories like <code>configs/</code>, 
+            <code>keys/</code>, or <code>data/</code>.
+        </p>
+    </div>
+</body>
+</html>
+
